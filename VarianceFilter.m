@@ -121,8 +121,8 @@ classdef VarianceFilter < FilterLayer
         function [framePost] = preProc(self, framePre)
             
             framePost = double(framePre) / 255;
-            self.intIm = integralImage(framePost);
-            self.intIm2 = integralImage(framePost.^2);
+            self.intIm = myIntIm(framePost);
+            self.intIm2 = myIntIm(framePost.^2);
         end
         
         
