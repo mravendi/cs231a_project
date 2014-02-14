@@ -40,7 +40,11 @@ classdef CascadeDetector < handle
             times
             cand = find(counts, 1, 'last');
             if cand > 1
-               figure(1); imshow(DrawHighScores(currFrame, hyp{cand}.hyps, score{cand}, 3));
+               figure(1); 
+               im2 = (DrawHighScores(currFrame, hyp{cand}.hyps, score{cand}, 3));
+%                keyboard;
+               if exist('insertShape') && 0
+                   imshow(im2); end
                title(class(self.layers{cand-1}));
                pause(.1);
             end
