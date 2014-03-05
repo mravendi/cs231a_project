@@ -9,7 +9,7 @@ classdef CascadeDetector < handle
     end
     
     methods
-        function [hypotheses, scores] = detect(self, currFrame)
+        function [hypotheses, scores, uncertainCandidates] = detect(self, currFrame)
 %             [frameProc, hyp0] = self.preProc.proc(currFrame);
             frameProc = currFrame; hyp0.hyps = MakeHypotheses(); %tmp
             
@@ -50,6 +50,7 @@ classdef CascadeDetector < handle
             end
 %             keyboard
             hypotheses = hyp{end}.hyps;
+            uncertainCandidates = hyp{end-1}.hyps;
             scores = score{end};
             self.lastFrame = currFrame;
         end
