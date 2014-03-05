@@ -9,6 +9,7 @@ numImgs = 20;           % Number of images to track
 seedRes = 5;            % Pixel Resolution of seed points 
 lowerPrctle = 10;       % Lower percentile to keep
 upperPrctle = 90;       % Upper percentile to keep
+flowThresh = 20;        % Threshold for median flow failure
 
 % Display first image and select seed bounding box
 img1 = imread(sprintf(imgPath,1));
@@ -43,6 +44,20 @@ for i = 1:numImgs-1
     
     % Track
     [x2, y2] = LKTrackPyr( img1, img2, x1, y1 );
+    
+    % Remove pixels that moved too much
+    flow = [x2-x1, y2-y1];
+    in = sqrt(sum(flow.^2,2));
+    x2 = x2(in < flowThresh);
+    y2 = y2(in < flowThresh);
+    
+    % Failure detection
+    medianFlow = [median(x2)-median(x1), median(y2)-median(y1)];
+    if (norm(medianFlow) < flowThresh)
+        display('Ok');
+    else
+        display('Tracker failed, median flow above threshold');
+    end
     
     % Show the image, and tracked points
     %if nargout == 0
