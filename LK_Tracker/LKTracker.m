@@ -16,6 +16,7 @@ function [ rect2 ] = LKTracker( img1, img2, rect, flowThresh ,seedRes, lPtle, uP
     y1 = pairs(:,2);
 
     [x2, y2] = LKTrackPyr( img1, img2, x1, y1 );
+    isValid;
     
     % Failure detection
     medianFlow = [median(x2)-median(x1), median(y2)-median(y1)];
@@ -25,15 +26,16 @@ function [ rect2 ] = LKTracker( img1, img2, rect, flowThresh ,seedRes, lPtle, uP
         in = sqrt(sum(flow.^2,2));
         x2 = x2(in < flowThresh);
         y2 = y2(in < flowThresh);
+        
+        % Construct next bounding box
+        xp = prctile(x2,[lPtle uPtle]);
+        yp = prctile(y2,[lPtle uPtle]);
+        rect2 = [xp(1), yp(1), xp(2)-xp(1), yp(2)-yp(1)];
     else
-        x2 = [];
-        y2 = [];
-        display('Tracker failed, median flow above threshold');
+        display('Tracker uncertain, median flow above threshold');
+        rect2 = [0,0,0,0];
     end
         
-    % Construct next bounding box
-    xp = prctile(x2,[lPtle uPtle]);
-    yp = prctile(y2,[lPtle uPtle]);
-    rect2 = [xp(1), yp(1), xp(2)-xp(1), yp(2)-yp(1)];
+
 
 end
