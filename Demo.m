@@ -101,10 +101,31 @@ for i = 1:5:50
 im2 = getIm(i);
 g = rgb2gray(im2);
 
-[h, s] = cd.detect(g);
+[hDet, scoreDet, cascadeCandidates] = cd.detect(g);
+
+% SKELETON CODE FOR INTEGRATION/LEARNING
+hTrack = LKTracker(g, gPrev, hPrev);
+
+boxes = vertcat(hDet, hTrack);
+[bestBox, bestScore] = Integrate(boxes, objectModel);
+if (bestScore > thresh)
+    reliable = true; end
+if all(hTrack == 0)
+    reliable = false; end
+if reliable
+    positives = SamplePositive(frame, bestBox);
+    negatives = SampleNegative(frame, bestBox, cascadeCandidates); %get candidates from cascade detector
+    labelPos = ones(size(positives)); labelNeg = zeros(size(negatives));
+    trainData = {vertcat(positives, negatives), vertcat(labelPos, labelNeg)};
+    cd.train(trainData);
+end
+if bestBox
+    drawBox(frame, bestBox);
 end
 % profile viewer
-error('stop');
+% boost ensemble, add features for NN, add ANN, integrator finds occlusion,
+% out of frame, frame change, reliability score
+% error('stop');
 %%
 tic
 v = VarianceFilter(targetVar);
