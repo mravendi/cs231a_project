@@ -15,6 +15,8 @@ classdef NNFilter < FilterLayer
     end
     
     methods
+        %NYI: FORGETTING, choosing which patches to use (also for other
+        %layers)
         function self = NNFilter(patches, labels)
             self.threshold = .55;
             self.szNorm = [15 15];
@@ -116,6 +118,7 @@ classdef NNFilter < FilterLayer
         function trainOut = train(self, trainData) %is trainData always a frame with hypotheses?
             trainData = trainData(1:2); trainOut = [];
             [patches, labels] = deal(trainData{:}); 
+            self.forget();
             for i = randsample(length(patches), length(patches))'
                 patch = patches{i}; label = labels(i);
                 
@@ -133,6 +136,7 @@ classdef NNFilter < FilterLayer
                     self.(anames{label+1})(end+1) = 0;
                 end
             end
+            
         end
         
     end

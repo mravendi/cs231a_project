@@ -151,7 +151,10 @@ classdef EnsembleFilter < FilterLayer
 %                     trainOut(i) = self.baseClassifiers(j).train(patch, isPos(i)); %or arrayfun?
 %                 end
 
-                [~, indices] = self.scorePatch(patch);
+                [score, indices] = self.scorePatch(patch);
+                prediction = (score > self.thresh);
+                if (prediction == isPos(i)) %don't train with 'easy' examples that are correctly classified
+                    continue; end
                 if isPos(i)
                     self.positives(indices) = self.positives(indices) + 1;
                 else
