@@ -1,7 +1,12 @@
-function [ rect2 ] = LKTracker( img1, img2, rect, flowThresh ,seedRes, lPtle, uPtle)
+function [ rect2 ] = LKTracker( img1, img2, rect)
     % img1 and img2 are separated by a small delta time
     % Bounding box rect = [XCoord1, YCoord1, XCoord2, YCoord2]
     % flowThresh is the median flow threshold
+    
+    seedRes = 10;            % Pixel Resolution of seed points 
+    lPtle = 25;       % Lower percentile to keep
+    uPtle = 75;       % Upper percentile to keep
+    flowThresh = 10;        % Threshold for median flow failure
 
     % Construct seed pixels
     xMin = rect(1);

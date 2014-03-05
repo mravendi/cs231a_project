@@ -30,7 +30,7 @@ for i = 1:numImgs-1
     end
     
     % Track
-    [ rect2 ] = LKTracker( img1, img2, rect1, flowThresh, seedRes, lPtle, uPtle);
+    [ rect2 ] = LKTracker( img1, img2, rect1);
     if (all(rect2) == 0)
         break;
     end
