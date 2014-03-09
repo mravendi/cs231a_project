@@ -45,7 +45,7 @@ gridSmall = hyps.pyramid.grids(1);
 possIndsNeg = find(scores(1:gridSmall.count) > .5);
 hyps = Grid2Hyps(gridSmall, possIndsNeg);
 inds = randsample(length(hyps), 1000);
-for i = inds'
+for i = inds(:)'
     hypNeg = hyps(i);
     if IoverU(HypRectRounded(hypNeg), HypRectRounded(hyp0)) > .25
         continue; end
@@ -73,7 +73,39 @@ cd.layers = {window, variance, ensemble, neighbors};
 tic
 cd.train(trainData); %.7 seconds
 toc
+error('stop');
+%%
+doConvNet = false;
+if doConvNet
+szI = size(patches{1});
+nFilt = 7;
+szFilt = round(szI/5);
+poolSz = round(szFilt/2);
+l = {};
+l{end+1} = ConvLayer(szI, nFilt, szFilt);
+l{end+1} = PointwiseLayer(@mysoftsign, l{end}.szO);
+l{end+1} = PoolLayer(l{end}.szO, l{end}.szO(1:2), poolSz, @MeanPool);
+l{end+1} = LinearTransLayer(l{end}.szO, 3);
+l{end+1} = PointwiseLayer(@mysoftsign, l{end}.szO); %the softsign seems to fix saturation issue! Except now it's overtrained
+l{end+1} = LinearTransLayer(l{end}.szO, 1);
+net = LayerNet(l, @LogisticLoss); %have layernet do the reshaping and sum over samples?
 
+%%
+options.epochs = 3;
+options.minibatch = 8; %was 256
+options.alpha = 1e-1;
+options.momentum = .95;
+theta0 = net.parVec;
+cost = @(theta, data, labels) net.descend(reshape(data, szI(1), szI(2), 1, [])/256, labels, theta);
+[thetaMin, pars] = minFuncSGD(cost,theta0,cat(4,trainData{1}{:}),trainData{2},options);
+
+%%
+n = 8;
+il = 6;
+figure(1); subplot(1,3,1); imagesc(reshape(l{il}.lastI, [], n)); title('input');
+subplot(1,3,2); imagesc(reshape(l{il}.lastO, [], n)); title('output');
+subplot(1,3,3); imagesc(l{il}.W); title('pars');
+end
 %%
 variance.targetVar
 plot(ensemble.positives ./ ensemble.negatives);
@@ -96,13 +128,26 @@ figure; show(neighbors.negatives, 20);
 % Don't use continuous pixel values (need to be careful about
 % over-generalizing!)
 % profile on
+g = im;
+hDet = hyp0;
 for i = 1:5:50
     %ensemble filter can currently look at ~2 hypotheses per ms
 im2 = getIm(i);
+gPrev = g;
+hPrev = hDet;
 g = rgb2gray(im2);
 
 [hDet, scoreDet, cascadeCandidates] = cd.detect(g);
-
+if doConvNet
+for i = 1:length(hDet)
+    patch = imresize(ensemble.cropPatch(g, hDet(i)), l{1}.szI(1:2));
+    prob(i) = sigmoid(-net.feed(patch));
+end
+prob(:)'
+scoreDet(:)'
+pause
+end
+continue;
 % SKELETON CODE FOR INTEGRATION/LEARNING
 hTrack = LKTracker(g, gPrev, hPrev);
 
@@ -121,6 +166,7 @@ if reliable
 end
 if bestBox
     drawBox(frame, bestBox);
+end
 end
 % profile viewer
 % boost ensemble, add features for NN, add ANN, integrator finds occlusion,

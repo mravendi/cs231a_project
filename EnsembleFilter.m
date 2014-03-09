@@ -152,7 +152,7 @@ classdef EnsembleFilter < FilterLayer
 %                 end
 
                 [score, indices] = self.scorePatch(patch);
-                prediction = (score > self.thresh);
+                prediction = (score > self.threshold);
                 if (prediction == isPos(i)) %don't train with 'easy' examples that are correctly classified
                     continue; end
                 if isPos(i)

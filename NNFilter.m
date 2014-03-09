@@ -96,8 +96,9 @@ classdef NNFilter < FilterLayer
             nT = sum(counts);
             
             if nargin < 2
-                n = nT - self.nMax; end
-            
+                n = nT - self.nMax; end %number of extra templates
+            if n < 0
+                return; end
             for i = 1:length(names)
                 nRemove = ceil(n * counts(i) / nT);
                 indsRemove = randsample(counts(i), nRemove);
@@ -119,7 +120,7 @@ classdef NNFilter < FilterLayer
             trainData = trainData(1:2); trainOut = [];
             [patches, labels] = deal(trainData{:}); 
             self.forget();
-            for i = randsample(length(patches), length(patches))'
+            for i = randsample(length(patches), length(patches))
                 patch = patches{i}; label = labels(i);
                 
                 [score, patch] = self.scoreHypothesis(patch);
@@ -133,6 +134,7 @@ classdef NNFilter < FilterLayer
                 if margin * label2 < self.lambda %error by a large margin, should add this
                     n = labelNames{label + 1};
                     self.(n) = horzcat(self.(n), patch');
+%                     keyboard
                     self.(anames{label+1})(end+1) = 0;
                 end
             end
