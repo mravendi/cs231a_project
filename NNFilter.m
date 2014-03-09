@@ -120,7 +120,8 @@ classdef NNFilter < FilterLayer
             trainData = trainData(1:2); trainOut = [];
             [patches, labels] = deal(trainData{:}); 
             self.forget();
-            for i = randsample(length(patches), length(patches))
+            indsShuffled = randsample(length(patches), length(patches));
+            for i = indsShuffled(:)'
                 patch = patches{i}; label = labels(i);
                 
                 [score, patch] = self.scoreHypothesis(patch);
