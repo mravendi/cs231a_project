@@ -75,7 +75,7 @@ cd.train(trainData); %.7 seconds
 toc
 error('stop');
 %%
-doConvNet = false;
+doConvNet = 1;
 if doConvNet
 szI = size(patches{1});
 nFilt = 7;
@@ -96,9 +96,57 @@ options.minibatch = 8; %was 256
 options.alpha = 1e-1;
 options.momentum = .95;
 theta0 = net.parVec;
+x = cat(4,trainData{1}{:}); y = trainData{2};
+[xte, xtr, yte, ytr] = splitData(x, y', .3);
+size(yte)
+size(ytr)
+%%
 cost = @(theta, data, labels) net.descend(reshape(data, szI(1), szI(2), 1, [])/256, labels, theta);
-[thetaMin, pars] = minFuncSGD(cost,theta0,cat(4,trainData{1}{:}),trainData{2},options);
-
+[thetaMin, pars] = minFuncSGD(cost,theta0,xtr,ytr,options);
+%%
+clear ctr cte
+inds = 1:20:size(pars,2);
+for i = inds
+    theta = pars(:, i);
+    [ctr(i), ~, out] = cost(theta, xtr, ytr); ctr(i) = ctr(i) / length(ytr); %should I change LogLoss to mean instead of sum?
+    atr(i) = mean(ytr == (out < 0));
+    [cte(i), ~, out] = cost(theta, xte, yte); cte(i) = cte(i) / length(yte);
+    ate(i) = mean(yte == (out < 0));
+end
+%% Plot training curves
+% ctr = ctr*length(ytr); cte = cte*length(yte);
+plot([ctr(inds)', cte(inds)']); title('loss'); legend('train', 'test'); %wow this takes a long time
+figure; plot([atr(inds)', ate(inds)']); title('acc'); legend('train', 'test'); %wow this takes a long time
+%% ROC for NN and trained CNet
+patchTr = mat2cell(xtr, 43, 26, 1, ones(size(xtr, 4),1));
+NN2 = NNFilter(patchTr(:), ytr);
+minGood = inf;
+maxBad = -inf;
+for i = 1:length(yte)
+    patch = xte(:,:,:,i);
+%     score = NN2.scoreHypothesis(patch);
+    score = -net.feed(patch);
+    NNScore(i) = score; 
+    doShow = false;
+    if yte(i) && score < minGood
+        minGood = score;
+        doShow = true;
+    end
+    if ~yte(i) && score > maxBad
+        maxBad = score;
+        doShow = true;
+    end
+    if doShow imshow(patch, []); title(sprintf('IsPos: %d   score: %2.2f', yte(i), NNScore(i))); pause; end
+end
+%%
+CNScore = out;
+nTe = length(yte);
+plotroc(yte, -CNScore(:)');
+figure; plotroc(yte, NNScore(:)');
+% targets = accumarray([yte(:)+1, (1:nTe)'], 1);
+% plotroc(targets, vertcat(CNScore(:)', -CNScore(:)'));
+% figure; plotroc(targets, vertcat(-NNScore(:)', NNScore(:)'));
+% [FP1, TP1] = ROC(
 %%
 n = 8;
 il = 6;
