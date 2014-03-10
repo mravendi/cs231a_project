@@ -8,7 +8,7 @@ classdef CascadeDetector < handle
         %other stuff?
     end
     
-    methods
+    methods        
         function [hypotheses, scores, uncertainCandidates] = detect(self, currFrame)
 %             [frameProc, hyp0] = self.preProc.proc(currFrame);
             frameProc = currFrame; hyp0.hyps = MakeHypotheses(); %tmp
@@ -41,7 +41,7 @@ classdef CascadeDetector < handle
             cand = find(counts, 1, 'last');
             if cand > 1
                figure(1); 
-               im2 = (DrawHighScores(currFrame, hyp{cand}.hyps, score{cand}, 3));
+               im2 = (DrawHighScores(currFrame, hyp{cand}.hyps, score{cand}, 3, 'red'));
 %                keyboard;
                if exist('insertShape') && 0
                    imshow(im2); end
@@ -54,6 +54,7 @@ classdef CascadeDetector < handle
             scores = score{end};
             self.lastFrame = currFrame;
         end
+        
         function [trainOut] = train(self, trainData)
             for i = 1:length(self.layers)
                 trainOut{i} = self.layers{i}.train(trainData);
