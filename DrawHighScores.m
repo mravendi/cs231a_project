@@ -1,5 +1,5 @@
-function [im2] = DrawHighScores(im, hypotheses, scores, n)
-if nargin < 4
+function [im2] = DrawHighScores(im, hypotheses, scores, n, color)
+if nargin < 5
     n = 20; end
 
 n = min(n, length(hypotheses));
@@ -12,14 +12,12 @@ if ~doInsert
 
 for i = 1:n%round(linspace(1, length(scores), n))
     ind = isort(i);
-    
     rect = BR2WH(HypRectRounded(hypotheses(ind)));
 %     rect = BR2WH(HypRectRounded(hypotheses, ind));
     if doInsert
-        im2 = insertShape(im2, 'rectangle', rect);
+        im2 = insertShape(im2, 'rectangle', rect, 'Color', color);
     else
-        
-        rectangle('Position', rect);
+        rectangle('Position', rect, 'EdgeColor', color);
 %         keyboard
     end
 %     im2 = insertObjectAnnotation(im2, 'rectangle', rect, scores(ind));

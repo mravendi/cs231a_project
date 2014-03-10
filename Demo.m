@@ -1,6 +1,6 @@
 %% Test script
 clear
-imPath = '/home/jray/Desktop/CS231A/project/TLD_source/_input';
+imPath = '../TLD_source/_input';
 getIm = @(i) imread(fullfile(imPath, sprintf('%05d.png', i)));
 initBox = [288,36,313,78];
 
@@ -73,7 +73,7 @@ cd.layers = {window, variance, ensemble, neighbors};
 tic
 cd.train(trainData); %.7 seconds
 toc
-error('stop');
+%error('stop');
 %%
 doConvNet = 1;
 if doConvNet
@@ -178,7 +178,9 @@ figure; show(neighbors.negatives, 20);
 % profile on
 g = im;
 hDet = hyp0;
-for i = 1:5:50
+will_track = 0;
+hPrev_tracker = [];
+for i = 1:1:50
     %ensemble filter can currently look at ~2 hypotheses per ms
 im2 = getIm(i);
 gPrev = g;
@@ -187,33 +189,79 @@ g = rgb2gray(im2);
 
 [hDet, scoreDet, cascadeCandidates] = cd.detect(g);
 if doConvNet
-for i = 1:length(hDet)
-    patch = imresize(ensemble.cropPatch(g, hDet(i)), l{1}.szI(1:2));
-    prob(i) = sigmoid(-net.feed(patch));
+        for j = 1:length(hDet)
+            patch = imresize(ensemble.cropPatch(g, hDet(j)), l{1}.szI(1:2));
+            prob(j) = sigmoid(-net.feed(patch));
+        end
+    prob(:)'
+    scoreDet(:)'
+    pause
 end
-prob(:)'
-scoreDet(:)'
-pause
-end
-continue;
 % SKELETON CODE FOR INTEGRATION/LEARNING
-hTrack = LKTracker(g, gPrev, hPrev);
+hTrack = [];
+hPrev_tracker
+if sum(hPrev_tracker) ~= 0
+    hTrack = LKTracker(gPrev, g, hPrev_tracker);
+    hDisplay_prev = [hPrev_tracker(1:2) (hPrev_tracker(3:4)-hPrev_tracker(1:2))];
+    rectangle('Position', hDisplay_prev, 'EdgeColor', 'green');
+    hPrev_tracker = hTrack;
+    
+    hDisplay = [hTrack(1:2) (hTrack(3:4)-hTrack(1:2))];
+    rectangle('Position', hDisplay, 'EdgeColor', 'blue');
+    
+    pause(0.05);
+end
+    
+bestScore = 0;
+if sum(hTrack) ~= 0 && ~isempty(hDet)
+    [hBestBox, bestScore] = Integrate(hDet, hTrack);
+elseif ~isempty(hDet)
+    hDet_end = hDet(end);
+    hBestBox = [hDet_end.x1 hDet_end.y1 hDet_end.x2 hDet_end.y2];
+elseif sum(hTrack) ~= 0
+    % since detector does not give back any results
+    hBestBox = hTrack;
+end
 
-boxes = vertcat(hDet, hTrack);
-[bestBox, bestScore] = Integrate(boxes, objectModel);
+hDisplayBestBox = [hBestBox(1:2) (hBestBox(3:4)-hBestBox(1:2))];
+rectangle('Position', hDisplayBestBox, 'EdgeColor', 'yellow');
+hPrev_tracker = hBestBox;
+pause(0.05);
+
+hBestBox
+bestScore
+
+thresh = 0.6;
+
 if (bestScore > thresh)
     reliable = true; end
 if all(hTrack == 0)
     reliable = false; end
+
 if reliable
-    positives = SamplePositive(frame, bestBox);
-    negatives = SampleNegative(frame, bestBox, cascadeCandidates); %get candidates from cascade detector
-    labelPos = ones(size(positives)); labelNeg = zeros(size(negatives));
-    trainData = {vertcat(positives, negatives), vertcat(labelPos, labelNeg)};
-    cd.train(trainData);
-end
-if bestBox
-    drawBox(frame, bestBox);
+    hyp_best = MakeHypotheses(hBestBox);
+    patches = WarpHyp(g, hyp_best);
+    
+    pos_patches = {};
+    neg_patches = {};
+    for jj=1:length(patches)
+        [sims, normed, sims_p, sims_n] = neighbors.similarity(patches{jj});
+        if sims.cons >= 0.5
+            pos_patches{end+1} = patches{jj};
+        %else
+            neg_patches{end+1} = patches{jj};
+        end
+    end
+    
+    % P-Expert
+    is_pos = ones(size(neg_patches));
+    
+    % N-Expert
+    [n_expert_patches] = N_Expert(g, cascadeCandidates, hBestBox);
+    is_neg = ones(size(n_expert_patches));
+    
+    train_data = {vertcat(pos_patches', n_expert_patches'), logical(vertcat(is_pos', ~is_neg'))};
+    cd.train(train_data);
 end
 end
 % profile viewer

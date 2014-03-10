@@ -3,10 +3,10 @@ function [ rect2 ] = LKTracker( img1, img2, rect)
     % Bounding box rect = [XCoord1, YCoord1, XCoord2, YCoord2]
     % flowThresh is the median flow threshold
     
-    seedRes = 10;            % Pixel Resolution of seed points 
+    seedRes = 5;            % Pixel Resolution of seed points 
     lPtle = 25;       % Lower percentile to keep
     uPtle = 75;       % Upper percentile to keep
-    flowThresh = 10;        % Threshold for median flow failure
+    flowThresh = 20;        % Threshold for median flow failure
 
     % Construct seed pixels
     xMin = rect(1);
@@ -22,18 +22,21 @@ function [ rect2 ] = LKTracker( img1, img2, rect)
 
     [x2, y2] = LKTrackPyr( img1, img2, x1, y1 );
     
-
-    
     % Failure detection
     flow = [x2-x1, y2-y1];
     
     % Remove pixels that moved too much
+    %{
     in = sqrt(sum(flow.^2,2));
     x2 = x2(in < flowThresh);
     y2 = y2(in < flowThresh);
     x1 = x1(in < flowThresh);
     y1 = y1(in < flowThresh);
     flow = [x2-x1, y2-y1];
+    %}
+    
+    %scatter(x1,y1,'g')
+    %scatter(x2,y2,'r')
     
     % Create next bounding box
     medianFlow = median(flow)
