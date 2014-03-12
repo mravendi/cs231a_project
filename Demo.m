@@ -1,11 +1,15 @@
 %% Test script
 clear
+
+addpath('Util');
+addpath('LK_Tracker');
+
 imPath = '../TLD_source/_input';
 getIm = @(i) imread(fullfile(imPath, sprintf('%05d.png', i)));
 initBox = [288,36,313,78];
+%initBox = [288,28,313,70];
 
 %%
-
 im = getIm(1);
 g = rgb2gray(im);
 hyp0 = MakeHypotheses(initBox);
@@ -130,91 +134,106 @@ figure; show(neighbors.negatives, 20);
 % profile on
 g = im;
 hDet = hyp0;
-will_track = 0;
 hPrev_tracker = [];
 for i = 1:1:50
+    strcat('Frame:', num2str(i))
     %ensemble filter can currently look at ~2 hypotheses per ms
-im2 = getIm(i);
-gPrev = g;
-hPrev = hDet;
-g = rgb2gray(im2);
+    im2 = getIm(i);
+    gPrev = g;
+    hPrev = hDet;
+    g = rgb2gray(im2);
 
-[hDet, scoreDet, cascadeCandidates] = cd.detect(g);
-if doConvNet
-        for j = 1:length(hDet)
-            patch = imresize(ensemble.cropPatch(g, hDet(j)), l{1}.szI(1:2));
-            prob(j) = sigmoid(-net.feed(patch));
-        end
-    prob(:)'
-    scoreDet(:)'
-    pause
-end
-% SKELETON CODE FOR INTEGRATION/LEARNING
-hTrack = [];
-hPrev_tracker
-if sum(hPrev_tracker) ~= 0
-    hTrack = LKTracker(gPrev, g, hPrev_tracker);
-    hDisplay_prev = [hPrev_tracker(1:2) (hPrev_tracker(3:4)-hPrev_tracker(1:2))];
-    rectangle('Position', hDisplay_prev, 'EdgeColor', 'green');
-    hPrev_tracker = hTrack;
-    
-    hDisplay = [hTrack(1:2) (hTrack(3:4)-hTrack(1:2))];
-    rectangle('Position', hDisplay, 'EdgeColor', 'blue');
-    
-    pause(0.05);
-end
-    
-bestScore = 0;
-if sum(hTrack) ~= 0 && ~isempty(hDet)
-    [hBestBox, bestScore] = Integrate(hDet, hTrack);
-elseif ~isempty(hDet)
-    hDet_end = hDet(end);
-    hBestBox = [hDet_end.x1 hDet_end.y1 hDet_end.x2 hDet_end.y2];
-elseif sum(hTrack) ~= 0
-    % since detector does not give back any results
-    hBestBox = hTrack;
-end
+    [hDet, scoreDet, cascadeCandidates] = cd.detect(g);
+    if doConvNet
+            for j = 1:length(hDet)
+                patch = imresize(ensemble.cropPatch(g, hDet(j)), l{1}.szI(1:2));
+                prob(j) = sigmoid(-net.feed(patch));
+            end
+        prob(:)'
+        scoreDet(:)'
+    end
+    % SKELETON CODE FOR INTEGRATION/LEARNING
+    hTrack = [];
+    hPrev_tracker
+    if sum(hPrev_tracker) ~= 0
+        hTrack = LKTracker(gPrev, g, hPrev_tracker);
+        hDisplay_prev = [hPrev_tracker(1:2) (hPrev_tracker(3:4)-hPrev_tracker(1:2))];
+        rectangle('Position', hDisplay_prev, 'EdgeColor', 'green');
+        hPrev_tracker = hTrack;
 
-hDisplayBestBox = [hBestBox(1:2) (hBestBox(3:4)-hBestBox(1:2))];
-rectangle('Position', hDisplayBestBox, 'EdgeColor', 'yellow');
-hPrev_tracker = hBestBox;
-pause(0.05);
-
-hBestBox
-bestScore
-
-thresh = 0.6;
-
-if (bestScore > thresh)
-    reliable = true; end
-if all(hTrack == 0)
-    reliable = false; end
-
-if reliable
-    hyp_best = MakeHypotheses(hBestBox);
-    patches = WarpHyp(g, hyp_best);
-    
-    pos_patches = {};
-    neg_patches = {};
-    for jj=1:length(patches)
-        [sims, normed, sims_p, sims_n] = neighbors.similarity(patches{jj});
-        if sims.cons >= 0.5
-            pos_patches{end+1} = patches{jj};
-        %else
-            neg_patches{end+1} = patches{jj};
+        if sum(hTrack) ~= 0
+            hDisplay = [hTrack(1:2) (hTrack(3:4)-hTrack(1:2))];
+            rectangle('Position', hDisplay, 'EdgeColor', 'blue');
+        else
+          	text(50, 50,'OBJECT NOT DETECTED', 'FontSize', 30, 'Color', 'red')
         end
     end
+
+    bestScore = 0;
+    idx = 0;
+    if sum(hTrack) ~= 0 && ~isempty(hDet)
+        [hBestBox, bestScore, idx] = Integrate(hDet, hTrack);
+    elseif ~isempty(hDet)
+        hDet_end = hDet(end);
+        hBestBox = [hDet_end.x1 hDet_end.y1 hDet_end.x2 hDet_end.y2];
+    elseif sum(hTrack) ~= 0
+        % since detector does not give back any results
+        hBestBox = hTrack;
+    end
     
-    % P-Expert
-    is_pos = ones(size(neg_patches));
-    
-    % N-Expert
-    [n_expert_patches] = N_Expert(g, cascadeCandidates, hBestBox);
-    is_neg = ones(size(n_expert_patches));
-    
-    train_data = {vertcat(pos_patches', n_expert_patches'), logical(vertcat(is_pos', ~is_neg'))};
-    cd.train(train_data);
-end
+    if sum(hBestBox) ~= 0
+        if idx ~= 0
+           box = hDet(idx);
+           box = [box.x1 box.y1 box.x2 box.y2];
+           rectangle('Position', BR2WH(box), 'EdgeColor', 'magenta'); 
+        end
+        
+        hDisplayBestBox = [hBestBox(1:2) (hBestBox(3:4)-hBestBox(1:2))];
+        rectangle('Position', hDisplayBestBox, 'EdgeColor', 'yellow');
+        hPrev_tracker = hBestBox;
+    else
+        text(50, 50,'OBJECT NOT DETECTED', 'FontSize', 30, 'Color', 'red')
+    end
+
+    hBestBox
+    bestScore
+
+    thresh = 0.64;
+
+    reliable = false;
+    if (bestScore > thresh)
+        reliable = true; end
+    if all(hTrack == 0)
+        reliable = false; end
+
+    if reliable        
+        text(50, 50,'LEARNS', 'FontSize', 30, 'Color', 'blue')
+
+        hyp_best = MakeHypotheses(hBestBox);
+        patches = WarpHyp(g, hyp_best);
+
+        pos_patches = {};
+        neg_patches = {};
+        for jj=1:length(patches)
+            [sims, normed, sims_p, sims_n] = neighbors.similarity(patches{jj});
+            if sims.cons >= 0.5
+                pos_patches{end+1} = patches{jj};
+            %else
+                neg_patches{end+1} = patches{jj};
+            end
+        end
+
+        % P-Expert
+        is_pos = ones(size(neg_patches));
+
+        % N-Expert
+        [n_expert_patches] = N_Expert(g, cascadeCandidates, hBestBox);
+        is_neg = ones(size(n_expert_patches));
+
+        train_data = {vertcat(pos_patches', n_expert_patches'), logical(vertcat(is_pos', ~is_neg'))};
+        cd.train(train_data);
+    end
+    pause(0.01);
 end
 % profile viewer
 % boost ensemble, add features for NN, add ANN, integrator finds occlusion,
@@ -232,7 +251,6 @@ im2 = DrawHighScores(g, hyps2, s2);
 figure(2);
 imshow(im2);
 
-
 %%
 % pars = num2cell(initBox);
 clear ef;
@@ -243,7 +261,6 @@ profile on
 ef.train({patchesPos, isPos}); %way too slow to have array of BaseClassifiers, need to consolidate this too :(
 toc
 profile viewer
-
 
 %%
 tic
@@ -268,7 +285,6 @@ error('end');
 %%
 clear nnf;
 
-
 nnf = NNFilter(patches, labels);
 %%
 tic
@@ -285,7 +301,6 @@ show(nnf.positives, 1);
 %%
 for i = find(~labels)'
     imshow(patches{i});
-    pause(.05);
 end
 %% Testing why we calculate the variance wrong...?
 h = hyps2(randsample(length(hyps2), 1));
