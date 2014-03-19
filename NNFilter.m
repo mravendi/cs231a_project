@@ -15,6 +15,8 @@ classdef NNFilter < FilterLayer
     end
     
     methods
+        %NYI: FORGETTING, choosing which patches to use (also for other
+        %layers)
         function self = NNFilter(patches, labels)
             self.threshold = .55;
             self.szNorm = [15 15];
@@ -94,8 +96,9 @@ classdef NNFilter < FilterLayer
             nT = sum(counts);
             
             if nargin < 2
-                n = nT - self.nMax; end
-            
+                n = nT - self.nMax; end %number of extra templates
+            if n < 0
+                return; end
             for i = 1:length(names)
                 nRemove = ceil(n * counts(i) / nT);
                 indsRemove = randsample(counts(i), nRemove);
@@ -116,7 +119,9 @@ classdef NNFilter < FilterLayer
         function trainOut = train(self, trainData) %is trainData always a frame with hypotheses?
             trainData = trainData(1:2); trainOut = [];
             [patches, labels] = deal(trainData{:}); 
-            for i = randsample(length(patches), length(patches))'
+            self.forget();
+            indsShuffled = randsample(length(patches), length(patches));
+            for i = indsShuffled(:)'
                 patch = patches{i}; label = labels(i);
                 
                 [score, patch] = self.scoreHypothesis(patch);
@@ -130,9 +135,11 @@ classdef NNFilter < FilterLayer
                 if margin * label2 < self.lambda %error by a large margin, should add this
                     n = labelNames{label + 1};
                     self.(n) = horzcat(self.(n), patch');
+%                     keyboard
                     self.(anames{label+1})(end+1) = 0;
                 end
             end
+            
         end
         
     end

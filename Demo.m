@@ -1,11 +1,15 @@
 %% Test script
 clear
-imPath = '/home/jray/Desktop/CS231A/project/TLD_source/_input';
+
+addpath('Util');
+addpath('LK_Tracker');
+
+imPath = '../TLD_source/_input';
 getIm = @(i) imread(fullfile(imPath, sprintf('%05d.png', i)));
 initBox = [288,36,313,78];
+%initBox = [288,28,313,70];
 
 %%
-
 im = getIm(1);
 g = rgb2gray(im);
 hyp0 = MakeHypotheses(initBox);
@@ -45,7 +49,7 @@ gridSmall = hyps.pyramid.grids(1);
 possIndsNeg = find(scores(1:gridSmall.count) > .5);
 hyps = Grid2Hyps(gridSmall, possIndsNeg);
 inds = randsample(length(hyps), 1000);
-for i = inds'
+for i = inds(:)'
     hypNeg = hyps(i);
     if IoverU(HypRectRounded(hypNeg), HypRectRounded(hyp0)) > .25
         continue; end
@@ -73,7 +77,39 @@ cd.layers = {window, variance, ensemble, neighbors};
 tic
 cd.train(trainData); %.7 seconds
 toc
+%error('stop');
+%%
+doConvNet = false;
+if doConvNet
+szI = size(patches{1});
+nFilt = 7;
+szFilt = round(szI/5);
+poolSz = round(szFilt/2);
+l = {};
+l{end+1} = ConvLayer(szI, nFilt, szFilt);
+l{end+1} = PointwiseLayer(@mysoftsign, l{end}.szO);
+l{end+1} = PoolLayer(l{end}.szO, l{end}.szO(1:2), poolSz, @MeanPool);
+l{end+1} = LinearTransLayer(l{end}.szO, 3);
+l{end+1} = PointwiseLayer(@mysoftsign, l{end}.szO); %the softsign seems to fix saturation issue! Except now it's overtrained
+l{end+1} = LinearTransLayer(l{end}.szO, 1);
+net = LayerNet(l, @LogisticLoss); %have layernet do the reshaping and sum over samples?
 
+%%
+options.epochs = 3;
+options.minibatch = 8; %was 256
+options.alpha = 1e-1;
+options.momentum = .95;
+theta0 = net.parVec;
+cost = @(theta, data, labels) net.descend(reshape(data, szI(1), szI(2), 1, [])/256, labels, theta);
+[thetaMin, pars] = minFuncSGD(cost,theta0,cat(4,trainData{1}{:}),trainData{2},options);
+
+%%
+n = 8;
+il = 6;
+figure(1); subplot(1,3,1); imagesc(reshape(l{il}.lastI, [], n)); title('input');
+subplot(1,3,2); imagesc(reshape(l{il}.lastO, [], n)); title('output');
+subplot(1,3,3); imagesc(l{il}.W); title('pars');
+end
 %%
 variance.targetVar
 plot(ensemble.positives ./ ensemble.negatives);
@@ -96,31 +132,108 @@ figure; show(neighbors.negatives, 20);
 % Don't use continuous pixel values (need to be careful about
 % over-generalizing!)
 % profile on
-for i = 1:5:50
+g = im;
+hDet = hyp0;
+hPrev_tracker = [];
+for i = 1:1:50
+    strcat('Frame:', num2str(i))
     %ensemble filter can currently look at ~2 hypotheses per ms
-im2 = getIm(i);
-g = rgb2gray(im2);
+    im2 = getIm(i);
+    gPrev = g;
+    hPrev = hDet;
+    g = rgb2gray(im2);
 
-[hDet, scoreDet, cascadeCandidates] = cd.detect(g);
+    [hDet, scoreDet, cascadeCandidates] = cd.detect(g);
+    if doConvNet
+            for j = 1:length(hDet)
+                patch = imresize(ensemble.cropPatch(g, hDet(j)), l{1}.szI(1:2));
+                prob(j) = sigmoid(-net.feed(patch));
+            end
+        prob(:)'
+        scoreDet(:)'
+    end
+    % SKELETON CODE FOR INTEGRATION/LEARNING
+    hTrack = [];
+    hPrev_tracker
+    if sum(hPrev_tracker) ~= 0
+        hTrack = LKTracker(gPrev, g, hPrev_tracker);
+        hDisplay_prev = [hPrev_tracker(1:2) (hPrev_tracker(3:4)-hPrev_tracker(1:2))];
+        rectangle('Position', hDisplay_prev, 'EdgeColor', 'green');
+        hPrev_tracker = hTrack;
 
-% SKELETON CODE FOR INTEGRATION/LEARNING
-hTrack = LKTracker(g, gPrev, hPrev);
+        if sum(hTrack) ~= 0
+            hDisplay = [hTrack(1:2) (hTrack(3:4)-hTrack(1:2))];
+            rectangle('Position', hDisplay, 'EdgeColor', 'blue');
+        else
+          	text(50, 50,'OBJECT NOT DETECTED', 'FontSize', 30, 'Color', 'red')
+        end
+    end
 
-boxes = vertcat(hDet, hTrack);
-[bestBox, bestScore] = Integrate(boxes, objectModel);
-if (bestScore > thresh)
-    reliable = true; end
-if all(hTrack == 0)
-    reliable = false; end
-if reliable
-    positives = SamplePositive(frame, bestBox);
-    negatives = SampleNegative(frame, bestBox, cascadeCandidates); %get candidates from cascade detector
-    labelPos = ones(size(positives)); labelNeg = zeros(size(negatives));
-    trainData = {vertcat(positives, negatives), vertcat(labelPos, labelNeg)};
-    cd.train(trainData);
-end
-if bestBox
-    drawBox(frame, bestBox);
+    bestScore = 0;
+    idx = 0;
+    if sum(hTrack) ~= 0 && ~isempty(hDet)
+        [hBestBox, bestScore, idx] = Integrate(hDet, hTrack);
+    elseif ~isempty(hDet)
+        hDet_end = hDet(end);
+        hBestBox = [hDet_end.x1 hDet_end.y1 hDet_end.x2 hDet_end.y2];
+    elseif sum(hTrack) ~= 0
+        % since detector does not give back any results
+        hBestBox = hTrack;
+    end
+    
+    if sum(hBestBox) ~= 0
+        if idx ~= 0
+           box = hDet(idx);
+           box = [box.x1 box.y1 box.x2 box.y2];
+           rectangle('Position', BR2WH(box), 'EdgeColor', 'magenta'); 
+        end
+        
+        hDisplayBestBox = [hBestBox(1:2) (hBestBox(3:4)-hBestBox(1:2))];
+        rectangle('Position', hDisplayBestBox, 'EdgeColor', 'yellow');
+        hPrev_tracker = hBestBox;
+    else
+        text(50, 50,'OBJECT NOT DETECTED', 'FontSize', 30, 'Color', 'red')
+    end
+
+    hBestBox
+    bestScore
+
+    thresh = 0.64;
+
+    reliable = false;
+    if (bestScore > thresh)
+        reliable = true; end
+    if all(hTrack == 0)
+        reliable = false; end
+
+    if reliable        
+        text(50, 50,'LEARNS', 'FontSize', 30, 'Color', 'blue')
+
+        hyp_best = MakeHypotheses(hBestBox);
+        patches = WarpHyp(g, hyp_best);
+
+        pos_patches = {};
+        neg_patches = {};
+        for jj=1:length(patches)
+            [sims, normed, sims_p, sims_n] = neighbors.similarity(patches{jj});
+            if sims.cons >= 0.5
+                pos_patches{end+1} = patches{jj};
+            %else
+                neg_patches{end+1} = patches{jj};
+            end
+        end
+
+        % P-Expert
+        is_pos = ones(size(neg_patches));
+
+        % N-Expert
+        [n_expert_patches] = N_Expert(g, cascadeCandidates, hBestBox);
+        is_neg = ones(size(n_expert_patches));
+
+        train_data = {vertcat(pos_patches', n_expert_patches'), logical(vertcat(is_pos', ~is_neg'))};
+        cd.train(train_data);
+    end
+    pause(0.01);
 end
 % profile viewer
 % boost ensemble, add features for NN, add ANN, integrator finds occlusion,
@@ -138,7 +251,6 @@ im2 = DrawHighScores(g, hyps2, s2);
 figure(2);
 imshow(im2);
 
-
 %%
 % pars = num2cell(initBox);
 clear ef;
@@ -149,7 +261,6 @@ profile on
 ef.train({patchesPos, isPos}); %way too slow to have array of BaseClassifiers, need to consolidate this too :(
 toc
 profile viewer
-
 
 %%
 tic
@@ -174,7 +285,6 @@ error('end');
 %%
 clear nnf;
 
-
 nnf = NNFilter(patches, labels);
 %%
 tic
@@ -191,7 +301,6 @@ show(nnf.positives, 1);
 %%
 for i = find(~labels)'
     imshow(patches{i});
-    pause(.05);
 end
 %% Testing why we calculate the variance wrong...?
 h = hyps2(randsample(length(hyps2), 1));
