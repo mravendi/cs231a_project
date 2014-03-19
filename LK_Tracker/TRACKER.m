@@ -6,10 +6,6 @@ close all
 % Initialize parameters
 imgPath = '../TLD_source/_input/00%2.3d.png';
 numImgs = 20;           % Number of images to track
-seedRes = 10;            % Pixel Resolution of seed points 
-lPtle = 25;       % Lower percentile to keep
-uPtle = 75;       % Upper percentile to keep
-flowThresh = 10;        % Threshold for median flow failure
 
 % Display first image and select seed bounding box
 img1 = imread(sprintf(imgPath,1));
@@ -35,6 +31,7 @@ for i = 1:numImgs-1
         break;
     end
     display(i);
+    figure(1);
     imshow(img1); hold on;
     r1 = [rect1(1), rect1(2), rect1(3)-rect1(1), rect1(4)-rect1(2)];
     r2 = [rect2(1), rect2(2), rect2(3)-rect2(1), rect2(4)-rect2(2)];
