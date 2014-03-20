@@ -26,7 +26,7 @@ for i = 1:numImgs-1
     end
     
     % Track
-    [ rect2 ] = LKTracker( img1, img2, rect1);
+    [ rect2 ] = LKTracker( img1, img2, rect1); pause;
     if (all(rect2) == 0)
         break;
     end

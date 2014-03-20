@@ -4,7 +4,7 @@ clear
 addpath('Util');
 addpath('LK_Tracker');
 
-imPath = '../TLD_source/_input';
+imPath = 'TLD_source/_input';
 getIm = @(i) imread(fullfile(imPath, sprintf('%05d.png', i)));
 initBox = [288,36,313,78];
 %initBox = [288,28,313,70];
