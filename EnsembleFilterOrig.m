@@ -28,20 +28,18 @@ classdef EnsembleFilter < FilterLayer
         classWeights;
     end
     
-    
-    
     methods
         function self = EnsembleFilter(patchSize)
-            self.patchSize = patchSize;
+            self.patchSize = [15 15];
             self.threshold = .5;
-            self.nCmp = 7; %13;
-            self.nBase = 250; %1000;
+            self.nCmp = 13;
+            self.nBase = inf;
             self.smoothSig = 3; %should depend on image size maybe? Or patch size?
             self.bv2Index = 2.^(0:self.nCmp - 1);
             self.genBase();
         end
         
-        function [scores, indices] = scorePatches(self, patches) %NYI
+        function [scores, indices] = scorePatches(self, patches)
             nP = size(patches, 3);
             i1 = repmat(self.cmpInds(:,:,1), [1 1 nP]); 
             i2 = repmat(self.cmpInds(:,:,2), [1 1 nP]); 
@@ -70,19 +68,15 @@ classdef EnsembleFilter < FilterLayer
             indices = self.bv2Index * bitVecs + 1; %code for bit vector
             cols = 1:self.nBase;
             indices = my2Dsub2ind(size(self.positives), indices, cols); %need to convert to index into array
-            num = sum(self.positives(indices));
-            denom = sum(self.negatives(indices)) + num;
-            score = num / denom; 
-            return
-            
-            np = self.positives(indices) + 1; %Laplace smoothing prior %for some reason 30 of these accesses takes 1ms??
-            nn = self.negatives(indices) + 1;
-            posteriors = np ./ (np + nn); %should we weight by the number of observations? Probably!
+            np = self.positives(indices);
+            nn = self.negatives(indices);
+            posteriors = np ./ max(np + nn, 1); %should we weight by the number of observations? Probably!
             %could assume 1/2, and only actually compute where np, nn
             %both have entries? Would that be faster?
             
             score = posteriors * self.classWeights;
-            %             compare these two approaches
+%             score = sum(np) / sum(np + nn); %how does this do? %TODO
+%             compare these two approaches
         end
         
         function [score, indices] = scoreHypothesis(self, frame, hypothesis)
@@ -92,10 +86,7 @@ classdef EnsembleFilter < FilterLayer
             [score, indices] = self.scoreCmpVecs(bitVecs);
         end
         
-        %this function seems to limit the cascade's speed
-        function [linInds, r1, c1] = warpCmps(self, imageSize, hyp)
-            doCache = true; %only gets us about 10% speed boost, why?
-            
+        function linInds = warpCmps(self, imageSize, hyp)
             hypSize = [hyp.y2 - hyp.y1, hyp.x2 - hyp.x1] + 1;
             scaleFactors = hypSize ./ self.patchSize;
             offset = [hyp.y1, hyp.x1] - 1; 
@@ -108,9 +99,6 @@ classdef EnsembleFilter < FilterLayer
             %find if in cache
             inCache = false; %or instead of caching, if we know there's a set of scales can just have the scaleIndex be a hyp par
             for i = 1:length(self.scales)
-                if ~doCache
-                    break; %check timing 
-                end
                 scale = self.scales{i};
                 if all(scaleFactors == self.scales{i})
                     r1 = self.rows{i};
@@ -124,17 +112,14 @@ classdef EnsembleFilter < FilterLayer
                 c1 = round(c1 * scaleFactors(2));
                 if length(self.scales) < 20 %add to cache if not too many stored already?
                     %should have a smarter way to cache, write a class to
-                    %do caching based on number of calls? TODO
-                    if doCache
-                        self.rows{end+1} = r1; self.cols{end+1} = c1; self.scales{end+1} = scaleFactors;
-                    end
+                    %do caching based on number of calls
+                    self.rows{end+1} = r1; self.cols{end+1} = c1; self.scales{end+1} = scaleFactors;
                 end
             end
+            %this is 3x faster than doing the below version
+            linInds = r1 + c1 * imageSize(1) + (offset(2) - 1) * imageSize(1) + offset(1);
             
-%             linInds = r1 + c1 * imageSize(1) + (offset(2) - 1) * imageSize(1) + offset(1); %this is 3x faster than doing the below version
-            
-            r1 = r1 + offset(1); c1 = c1 + offset(2); 
-            linInds = r1 + (c1 - 1) * imageSize(1);
+%             r1 = r1 + offset(1); c1 = c1 + offset(2); 
 %             
 %             linInds = my2Dsub2ind(imageSize, r1, c1);
 % %             linInds = r1 + (c1 - 1) * imageSize(1); %my fast sub2ind
@@ -154,10 +139,6 @@ classdef EnsembleFilter < FilterLayer
         end
         
         function trainOut = train(self, trainData) %is trainData always a set of patches with labels? Make it a class or struct? Parser to get the frame, hypotheses, patches?
-            nCurr = sum(self.positives(:) + self.negatives(:));
-            countTarget = max(2^self.nCmp, nCurr);
-            nAdded = 0;
-                        
             trainData = trainData(1:2);
             [patches, isPos] = deal(trainData{:}); 
             for i = 1:length(patches)
@@ -174,7 +155,6 @@ classdef EnsembleFilter < FilterLayer
                 prediction = (score > self.threshold);
                 if (prediction == isPos(i)) %don't train with 'easy' examples that are correctly classified
                     continue; end
-                nAdded = nAdded + 1;
                 if isPos(i)
                     self.positives(indices) = self.positives(indices) + 1;
                 else
@@ -183,9 +163,6 @@ classdef EnsembleFilter < FilterLayer
                 %adjust weights somehow?
                 
             end
-            factor = min(countTarget/(nCurr + nAdded), 1);
-            self.positives = self.positives * factor;
-            self.negatives = self.negatives * factor;
             trainOut = [];
         end
         

@@ -3,15 +3,13 @@ classdef VarianceFilter < FilterLayer
     
     properties
         targetVar;
-        alpha;
         intIm;
         intIm2;
     end
     
     methods
         function self = VarianceFilter(targetVar, threshold) %could have a min and max variance?
-            self.threshold = 2/3; %.5;
-            self.alpha = .9; %weight of past observations
+            self.threshold = .50;
             self.targetVar = targetVar;
         end
         
@@ -29,7 +27,6 @@ classdef VarianceFilter < FilterLayer
                 vars = arrayfun(f, hyps.hyps);
             end
             scores = vars * 255^2 / self.targetVar;
-            scores = min(scores, 1./scores);
             indsGood = scores > self.threshold;
             if isfield(hyps, 'pyramid') && isempty(hyps.hyps)
                 hyps.hyps = Pyr2Hyps(p, indsGood);
@@ -46,13 +43,12 @@ classdef VarianceFilter < FilterLayer
         end
         
         function sums = sumsOnRow(self, imName, grid, rowIndex)
-            sumBand = self.(imName)(grid.rowsBot(rowIndex), :);
-            offset = 0;
-            rT = grid.rowsTop(rowIndex);
-            if rT > 1
-                offset = self.(imName)(rT-1,:); end
-            sumBand = sumBand - offset;
-            sums = sumBand(grid.colsRight) - sumBand(grid.colsLeft);
+            im = self.(imName);
+            BR = im(grid.rowsBot(rowIndex), grid.colsRight);
+            TR = im(grid.rowsTop(rowIndex), grid.colsRight);
+            BL = im(grid.rowsBot(rowIndex), grid.colsLeft);
+            TL = im(grid.rowsTop(rowIndex), grid.colsLeft);
+            sums = BR + TL - BL - TR;
         end
         
         function vars = varGrid(self, grid)
@@ -124,12 +120,7 @@ classdef VarianceFilter < FilterLayer
         
         
         function trainOut = train(self, trainData) %is trainData always a set of patches with labels? Make it a class or struct? Parser to get the frame, hypotheses, patches?
-            frames = trainData{1}(trainData{2}); trainOut = [];
-            getVar = @(frame) var(double(frame(:))); %mean(uint32(frame(:)).^2) - mean(frame(:))^2;
-            vars = cellfun(getVar, frames);
-%             self.targetVar = min([vars(:); self.targetVar]);
-            alpha = self.alpha;
-            self.targetVar = alpha * self.targetVar + (1-alpha) * mean(vars(:)); %or use min(vars(:))?
+            trainOut = [];
         end
           
     end
