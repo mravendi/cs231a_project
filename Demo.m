@@ -1,15 +1,11 @@
 %% Test script
 clear
-
-addpath('Util');
-addpath('LK_Tracker');
-
 imPath = 'TLD_source/_input';
 getIm = @(i) imread(fullfile(imPath, sprintf('%05d.png', i)));
 initBox = [288,36,313,78];
-%initBox = [288,28,313,70];
 
 %%
+
 im = getIm(1);
 g = rgb2gray(im);
 hyp0 = MakeHypotheses(initBox);
@@ -72,99 +68,35 @@ labels = vertcat(isPos(:), ~isNeg(:));
 sample = randsample(length(labels), length(labels));
 trainData = {patches(sample), logical(labels(sample))};
 cd = CascadeDetector();
-cd.layers = {window, variance, ensemble, neighbors};
-%%
-tic
-cd.train(trainData); %.7 seconds
-toc
-%error('stop');
-%%
-doConvNet = 1;
+doConvNet = 0;
 if doConvNet
-szI = size(patches{1});
-nFilt = 7;
-szFilt = round(szI/5);
-poolSz = round(szFilt/2);
-l = {};
-l{end+1} = ConvLayer(szI, nFilt, szFilt);
-l{end+1} = PointwiseLayer(@mysoftsign, l{end}.szO);
-l{end+1} = PoolLayer(l{end}.szO, l{end}.szO(1:2), poolSz, @MeanPool);
-l{end+1} = LinearTransLayer(l{end}.szO, 3);
-l{end+1} = PointwiseLayer(@mysoftsign, l{end}.szO); %the softsign seems to fix saturation issue! Except now it's overtrained
-l{end+1} = LinearTransLayer(l{end}.szO, 1);
-net = LayerNet(l, @LogisticLoss); %have layernet do the reshaping and sum over samples?
+    
+    szI = size(patches{1});
+    nFilt = 7;
+    szFilt = round(szI/5);
+    poolSz = round(szFilt/2);
+    l = {};
+    l{end+1} = ConvLayer(szI, nFilt, szFilt);
+    l{end+1} = PointwiseLayer(@mysoftsign, l{end}.szO);
+    l{end+1} = PoolLayer(l{end}.szO, l{end}.szO(1:2), poolSz, @MeanPool);
+    l{end+1} = LinearTransLayer(l{end}.szO, 3);
+    l{end+1} = PointwiseLayer(@mysoftsign, l{end}.szO); %the softsign seems to fix saturation issue! Except now it's overtrained
+    l{end+1} = LinearTransLayer(l{end}.szO, 1);
+    ann = ANNFilter(l, @LogisticLoss);
+    
+    
+    cd.layers = {window, variance, ensemble, ann};
+else
+    cd.layers = {window, variance, ensemble, neighbors};
+end
+% error('err');
 
 %%
-options.epochs = 3;
-options.minibatch = 8; %was 256
-options.alpha = 1e-1;
-options.momentum = .95;
-theta0 = net.parVec;
-x = cat(4,trainData{1}{:}); y = trainData{2};
-[xte, xtr, yte, ytr] = splitData(x, y', .3);
-size(yte)
-size(ytr)
-%%
-cost = @(theta, data, labels) net.descend(reshape(data, szI(1), szI(2), 1, [])/256, labels, theta);
-[thetaMin, pars] = minFuncSGD(cost,theta0,xtr,ytr,options);
-%%
-clear ctr cte
-inds = 1:20:size(pars,2);
-for i = inds
-    theta = pars(:, i);
-    [ctr(i), ~, out] = cost(theta, xtr, ytr); ctr(i) = ctr(i) / length(ytr); %should I change LogLoss to mean instead of sum?
-    atr(i) = mean(ytr == (out < 0));
-    [cte(i), ~, out] = cost(theta, xte, yte); cte(i) = cte(i) / length(yte);
-    ate(i) = mean(yte == (out < 0));
-end
-%% Plot training curves
-% ctr = ctr*length(ytr); cte = cte*length(yte);
-plot([ctr(inds)', cte(inds)']); title('loss'); legend('train', 'test'); %wow this takes a long time
-figure; plot([atr(inds)', ate(inds)']); title('acc'); legend('train', 'test'); %wow this takes a long time
-%% ROC for NN and trained CNet
-patchTr = mat2cell(xtr, 43, 26, 1, ones(size(xtr, 4),1));
-NN2 = NNFilter(patchTr(:), ytr);
-minGood = inf;
-maxBad = -inf;
-for i = 1:length(yte)
-    patch = xte(:,:,:,i);
-%     score = NN2.scoreHypothesis(patch);
-    score = -net.feed(patch);
-    NNScore(i) = score; 
-    doShow = false;
-    if yte(i) && score < minGood
-        minGood = score;
-        doShow = true;
-    end
-    if ~yte(i) && score > maxBad
-        maxBad = score;
-        doShow = true;
-    end
-    if doShow imshow(patch, []); title(sprintf('IsPos: %d   score: %2.2f', yte(i), NNScore(i))); pause; end
-end
-%%
-CNScore = out;
-nTe = length(yte);
-plotroc(yte, -CNScore(:)');
-figure; plotroc(yte, NNScore(:)');
-% targets = accumarray([yte(:)+1, (1:nTe)'], 1);
-% plotroc(targets, vertcat(CNScore(:)', -CNScore(:)'));
-% figure; plotroc(targets, vertcat(-NNScore(:)', NNScore(:)'));
-% [FP1, TP1] = ROC(
-%%
-n = 8;
-il = 6;
-figure(1); subplot(1,3,1); imagesc(reshape(l{il}.lastI, [], n)); title('input');
-subplot(1,3,2); imagesc(reshape(l{il}.lastO, [], n)); title('output');
-subplot(1,3,3); imagesc(l{il}.W); title('pars');
-end
-%%
-variance.targetVar
-plot(ensemble.positives ./ ensemble.negatives);
-show = @(arr, i) imshow(imresize(reshape(arr(:, i), [15 15]), [75 75]), []);
-figure; show(neighbors.positives, 20);
-figure; show(neighbors.negatives, 20);
-% error('err');
+cd.train(trainData);
+g = rgb2gray(im);
+hDet = hyp0;
+will_track = 0;
+hPrev_tracker = []; hPrev_tracker = HypRectRounded(hyp0)
 %%
 
 % to speed up - replace var filter with variance on grid
@@ -190,7 +122,10 @@ for i = 1:1:50
     gPrev = g;
     hPrev = hDet;
     g = rgb2gray(im2);
-
+    clf;
+    imshow(g, []);
+    hold on;
+    
     [hDet, scoreDet, cascadeCandidates] = cd.detect(g);
     if doConvNet
             for j = 1:length(hDet)
@@ -286,7 +221,7 @@ end
 % profile viewer
 % boost ensemble, add features for NN, add ANN, integrator finds occlusion,
 % out of frame, frame change, reliability score
-% error('stop');
+error('Done with demo');
 %%
 tic
 v = VarianceFilter(targetVar);

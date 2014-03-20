@@ -33,6 +33,7 @@ function [ rect2 ] = LKTracker( img1, img2, rect)
 	discard = y1<yMin | y1>yMax |x1<xMin | x1>xMax; % points in box
 	y1 = y1(~discard);
 	x1 = x1(~discard);
+    
     figure(1);
     scatter(x1,y1);
     %}
@@ -56,7 +57,7 @@ function [ rect2 ] = LKTracker( img1, img2, rect)
     %scatter(x2,y2,'r')
     
     % Create next bounding box
-    medianFlow = median(flow).*2;
+    medianFlow = median(flow, 1).*2;
     if (norm(medianFlow) < flowThresh)
         rect2 = [rect(1)+medianFlow(1),rect(2)+medianFlow(2),rect(3)+medianFlow(1),rect(4)+medianFlow(2)];
     else
